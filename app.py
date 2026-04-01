@@ -693,7 +693,7 @@ def respon_laporan(id_laporan):
     return redirect(url_for('barang_saya'))
 
 # ── LAPORAN DENDA (pemilik, hanya setelah selesai) ──
-@@app.route('/denda/<int:id_transaksi>', methods=['GET','POST'])
+@app.route('/denda/<int:id_transaksi>', methods=['GET','POST'])
 def denda(id_transaksi):
     if 'user_id' not in session: return redirect(url_for('login'))
     conn = get_db()
