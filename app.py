@@ -52,10 +52,32 @@ def cek_blokir():
 
 def save_foto(f, prefix):
     if f and f.filename and allowed_file(f.filename):
-        filename = secure_filename(f'{prefix}_{f.filename}')
+        # PASTIKAN FOLDER ADA (Penting buat Railway agar tidak Error 500)
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+        # Membuat nama file aman: prefix_nama_asli.jpg
+        filename = secure_filename(f"{prefix}_{f.filename}")
+        
+        # Simpan file ke folder static/images/uploads
         f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         return filename
     return None
+
+# Tambahkan ini di awal app.py untuk update database otomatis
+def update_db():
+    conn = get_db()
+    # Tambah kolom baru ke tabel users
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN nik TEXT UNIQUE")
+        conn.execute("ALTER TABLE users ADD COLUMN provinsi TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN kabupaten TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN kecamatan TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN desa TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN alamat_detail TEXT")
+        conn.commit()
+    except:
+        pass # Jika kolom sudah ada, abaikan
 
 def init_db():
     conn = sqlite3.connect('database.db')
@@ -188,21 +210,47 @@ def home():
         barang = conn.execute("SELECT b.*,u.nama as nama_pemilik FROM barang b JOIN users u ON b.id_pemilik=u.id WHERE b.status='tersedia' ORDER BY b.total_disewa DESC").fetchall()
     return render_template('home.html', barang=barang, search=search, kategori=kategori, notif_count=notif_count())
 
-@app.route('/register', methods=['GET','POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        nama,email,password = request.form['nama'],request.form['email'],request.form['password']
-        no_hp,alamat,tipe_akun = request.form['no_hp'],request.form['alamat'],request.form['tipe_akun']
+        nik = request.form.get('nik')
+        nama = request.form.get('nama')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        prov = request.form.get('provinsi')
+        kab = request.form.get('kabupaten')
+        kec = request.form.get('kecamatan')
+        desa = request.form.get('desa')
+        detail = request.form.get('alamat_detail')
+        
         conn = get_db()
-        if conn.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
-            flash('Email sudah terdaftar!','error')
+        
+        # Cek apakah Email sudah ada (Satu email untuk semua role)
+        user_lama = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if user_lama:
+            flash("Email sudah terdaftar! Anda bisa langsung login untuk meminjam atau menyewakan.", "error")
             return redirect(url_for('register'))
-        conn.execute("INSERT INTO users (nama,email,password,no_hp,alamat,tipe_akun) VALUES (?,?,?,?,?,?)",
-                     (nama,email,generate_password_hash(password),no_hp,alamat,tipe_akun))
-        conn.commit()
-        flash('Registrasi berhasil! Silakan login.','success')
-        return redirect(url_for('login'))
-    return render_template('register.html', notif_count=notif_count())
+
+        # Cek NIK
+        existing_nik = conn.execute("SELECT id FROM users WHERE nik = ?", (nik,)).fetchone()
+        if existing_nik:
+            flash("Gagal! NIK sudah digunakan untuk akun lain.", "error")
+            return redirect(url_for('register'))
+
+        hash_pw = generate_password_hash(password)
+        try:
+            # Kita set 'peminjam' sebagai role awal, tapi user tetap bisa akses fitur pemilik
+            conn.execute("""INSERT INTO users 
+                (nik, nama, email, password, role, tipe_akun, provinsi, kabupaten, kecamatan, desa, alamat_detail) 
+                VALUES (?, ?, ?, ?, 'user', 'pemilik', ?, ?, ?, ?, ?)""",
+                (nik, nama, email, hash_pw, prov, kab, kec, desa, detail))
+            conn.commit()
+            flash("Registrasi Berhasil! Silakan Login.", "success")
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash(f"Terjadi kesalahan: {e}", "error")
+            
+    return render_template('register.html')
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -257,30 +305,37 @@ def detail_barang(id):
         is_pemilik_sendiri = (barang['id_pemilik'] == session['user_id']) or (session.get('role') == 'admin') or (session.get('tipe_akun') == 'pemilik')
     return render_template('detail_barang.html', barang=barang, reviews=reviews, total_disewa=total_disewa, notif_count=notif_count(), is_pemilik_sendiri=is_pemilik_sendiri)
 
-@app.route('/booking/<int:id_barang>', methods=['GET','POST'])
-def booking(id_barang):
-    if 'user_id' not in session:
-        return redirect(url_for('login', next=url_for('booking', id_barang=id_barang)))
-    if cek_blokir(): return redirect(url_for('akun_diblokir'))
-    if session.get('tipe_akun') in ['pemilik','admin'] or session.get('role') == 'admin':
-        flash('Akun pemilik dan admin tidak dapat meminjam barang. Gunakan akun peminjam.','error')
-        return redirect(url_for('detail_barang', id=id_barang))
+@app.route('/booking/<int:id>', methods=['GET', 'POST'])
+def booking(id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
     conn = get_db()
-    barang = conn.execute("SELECT * FROM barang WHERE id=?",(id_barang,)).fetchone()
-    if not barang: return redirect(url_for('home'))
-    if barang['id_pemilik'] == session['user_id']:
-        flash('Kamu tidak bisa meminjam barang milikmu sendiri!','error')
-        return redirect(url_for('detail_barang', id=id_barang))
+    barang = conn.execute("SELECT * FROM barang WHERE id=?", (id,)).fetchone()
+
     if request.method == 'POST':
-        durasi = int(request.form['durasi'])
-        metode_bayar = request.form['metode_pembayaran']
-        conn.execute("INSERT INTO transaksi (id_user,id_barang,tanggal_pinjam,durasi,metode_pengambilan,metode_pembayaran,biaya_sewa,total_biaya) VALUES (?,?,?,?,?,?,?,?)",
-                     (session['user_id'],id_barang,request.form['tanggal_pinjam'],durasi,request.form['metode_pengambilan'],metode_bayar,barang['harga_sewa'],barang['harga_sewa']*durasi))
-        add_notif(barang['id_pemilik'],f"Ada permintaan booking untuk '{barang['nama_barang']}'!")
+        durasi = int(request.form.get('durasi'))
+        metode_pengambilan = request.form.get('metode_pengambilan')
+        metode_pembayaran = request.form.get('metode_pembayaran')
+        tanggal_pinjam = request.form.get('tanggal_pinjam')
+
+        # --- LOGIKA BARU: HITUNG ADMIN FEE ---
+        biaya_sewa = barang['harga_sewa'] * durasi
+        admin_fee = round(biaya_sewa * 0.05) # Hitung 5%
+        total_biaya = biaya_sewa + admin_fee # Total yang disimpan ke DB
+        # -------------------------------------
+
+        conn.execute('''
+            INSERT INTO transaksi (id_user, id_barang, tanggal_pinjam, durasi, 
+                                 metode_pengambilan, metode_pembayaran, biaya_sewa, total_biaya)
+            VALUES (?,?,?,?,?,?,?,?)
+        ''', (session['user_id'], id, tanggal_pinjam, durasi, 
+              metode_pengambilan, metode_pembayaran, biaya_sewa, total_biaya))
+        
         conn.commit()
-        flash('Permintaan peminjaman dikirim! Menunggu persetujuan pemilik.','success')
+        flash("Peminjaman berhasil diajukan!")
         return redirect(url_for('riwayat'))
-    return render_template('booking.html', barang=barang, notif_count=notif_count())
+
+    return render_template('booking.html', barang=barang)
 
 # ── RIWAYAT (peminjam saja) ──
 @app.route('/riwayat')
