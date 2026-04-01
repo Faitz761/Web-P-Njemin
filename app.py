@@ -202,8 +202,21 @@ def init_db():
             FOREIGN KEY (id_peminjam) REFERENCES users(id)
         );
     ''')
+    # 2. CEK ADMIN (Pindahkan conn.close() ke bawah bagian ini!)
+    admin_email = 'admin@pnjemin.com'
+    existing = c.execute("SELECT id FROM users WHERE email=?", (admin_email,)).fetchone()
+    
+    if not existing:
+        # Buat akun admin default kalau belum ada
+        pw_admin = generate_password_hash('admin123')
+        c.execute("INSERT INTO users (nama, email, password, role) VALUES (?, ?, ?, ?)",
+                  ('Admin P-Njemin', admin_email, pw_admin, 'admin'))
+        print("Akun Admin default berhasil dibuat!")
+
+    # 3. BARU TUTUP KONEKSI DI SINI
     conn.commit()
     conn.close()
+    print("Database Berhasil Diinisialisasi!")
     # Migrasi: tambah kolom baru jika belum ada
     for col, defval in [('foto_serah','TEXT'), ('foto_terima','TEXT')]:
         try:
