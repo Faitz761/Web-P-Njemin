@@ -52,11 +52,14 @@ def cek_blokir():
 
 def save_foto(f, prefix):
     if f and f.filename and allowed_file(f.filename):
-        # Pastikan folder ada sebelum menyimpan
+        # PASTIKAN FOLDER ADA (Penting buat Railway agar tidak Error 500)
         if not os.path.exists(app.config['UPLOAD_FOLDER']):
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             
-        filename = secure_filename(f'{prefix}_{f.filename}')
+        # Membuat nama file aman: prefix_nama_asli.jpg
+        filename = secure_filename(f"{prefix}_{f.filename}")
+        
+        # Simpan file ke folder static/images/uploads
         f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         return filename
     return None
