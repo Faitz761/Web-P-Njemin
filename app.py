@@ -5,7 +5,12 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'pnjemin_secret_key_2024'
-app.config['UPLOAD_FOLDER'] = 'static/images/uploads'
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'images', 'uploads')
+DB_PATH = os.path.join(BASE_DIR, 'database.db')
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
@@ -14,7 +19,7 @@ def allowed_file(f):
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect('database.db', check_same_thread=False)
+        g.db = sqlite3.connect(DB_PATH, check_same_thread=False)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA journal_mode=WAL")
     return g.db
@@ -52,85 +57,27 @@ def cek_blokir():
 
 def save_foto(f, prefix):
     if f and f.filename and allowed_file(f.filename):
-        # PASTIKAN FOLDER ADA (Penting buat Railway agar tidak Error 500)
-        if not os.path.exists(app.config['UPLOAD_FOLDER']):
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            
-        # Membuat nama file aman: prefix_nama_asli.jpg
-        filename = secure_filename(f"{prefix}_{f.filename}")
-        
-        # Simpan file ke folder static/images/uploads
+        filename = secure_filename(f'{prefix}_{f.filename}')
         f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         return filename
     return None
-# Tambahkan ini di awal app.py untuk update database otomatis
-def update_db():
-    conn = get_db()
-    # Tambah kolom baru ke tabel users
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN nik TEXT UNIQUE")
-        conn.execute("ALTER TABLE users ADD COLUMN provinsi TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN kabupaten TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN kecamatan TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN desa TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN alamat_detail TEXT")
-        conn.commit()
-    except:
-        pass # Jika kolom sudah ada, abaikan
-
-# --- SISTEM KEUNTUNGAN PINJEMIN ---
-def hitung_fee_upload(harga_barang):
-    harga = float(harga_barang)
-    if harga <= 5000000: return int(harga * 0.04)
-    if harga <= 10000000: return int(harga * 0.06)
-    if harga <= 15000000: return int(harga * 0.08)
-    if harga <= 20000000: return int(harga * 0.10)
-    if harga <= 25000000: return int(harga * 0.12)
-    return 0 # Lebih dari 25jt = 0%
-
-def hitung_denda_terlambat(hari_terlambat):
-    total = int(hari_terlambat) * 20000
-    return total, int(total * 0.5), int(total * 0.5) # total, platform, pemilik
-
-def hitung_denda_kerusakan(nominal_kerusakan):
-    total = int(nominal_kerusakan)
-    return total, int(total * 0.2), int(total * 0.8) # total, platform, pemilik
-
-# Tambahkan ini di awal app.py untuk update database otomatis
-def update_db():
-    conn = get_db()
-    # Tambah kolom baru ke tabel users
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN nik TEXT UNIQUE")
-        conn.execute("ALTER TABLE users ADD COLUMN provinsi TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN kabupaten TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN kecamatan TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN desa TEXT")
-        conn.execute("ALTER TABLE users ADD COLUMN alamat_detail TEXT")
-        conn.commit()
-    except:
-        pass # Jika kolom sudah ada, abaikan
 
 def init_db():
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.executescript('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nama TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-            no_hp TEXT, nik TEXT UNIQUE, provinsi TEXT, kabupaten TEXT, 
-            kecamatan TEXT, desa TEXT, alamat_detail TEXT,
-            role TEXT DEFAULT 'user', tipe_akun TEXT DEFAULT 'peminjam', 
-            rating REAL DEFAULT 0, total_transaksi INTEGER DEFAULT 0, 
-            status TEXT DEFAULT 'aktif', foto_ktp TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            no_hp TEXT, alamat TEXT, role TEXT DEFAULT 'user',
+            tipe_akun TEXT DEFAULT 'peminjam', rating REAL DEFAULT 0,
+            total_transaksi INTEGER DEFAULT 0, status TEXT DEFAULT 'aktif',
+            foto_ktp TEXT, nik TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS barang (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nama_barang TEXT NOT NULL, deskripsi TEXT, 
-            harga_sewa REAL NOT NULL, -- Ini adalah harga_per_hari
-            harga_barang REAL DEFAULT 0, -- Nilai asli barang (untuk fee upload)
-            fee_upload REAL DEFAULT 0,
+            nama_barang TEXT NOT NULL, deskripsi TEXT, harga_sewa REAL NOT NULL,
             stok INTEGER DEFAULT 1, lokasi TEXT, kategori TEXT, foto TEXT,
             id_pemilik INTEGER, rating REAL DEFAULT 0, total_disewa INTEGER DEFAULT 0,
             status TEXT DEFAULT 'tersedia', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -140,35 +87,14 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             id_user INTEGER, id_barang INTEGER, tanggal_pinjam TEXT,
             durasi INTEGER, metode_pengambilan TEXT, metode_pembayaran TEXT,
-            biaya_sewa REAL, -- total_harga (harga_sewa x durasi)
-            admin_fee REAL DEFAULT 0,
-            total_biaya REAL, -- total_bayar (biaya_sewa + admin_fee)
+            biaya_sewa REAL, total_biaya REAL,
             status TEXT DEFAULT 'menunggu_persetujuan',
             bukti_pembayaran TEXT, catatan TEXT, denda REAL DEFAULT 0,
-            foto_serah TEXT, foto_terima TEXT,
+            foto_serah TEXT,
+            foto_terima TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (id_user) REFERENCES users(id),
             FOREIGN KEY (id_barang) REFERENCES barang(id)
-        );
-        -- TABEL BARU: DENDA
-        CREATE TABLE IF NOT EXISTS denda (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transaksi_id INTEGER,
-            jenis TEXT, -- 'terlambat' atau 'kerusakan'
-            total_denda INTEGER,
-            bagian_platform INTEGER,
-            bagian_pemilik INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (transaksi_id) REFERENCES transaksi(id)
-        );
-        -- TABEL BARU: PROMOSI
-        CREATE TABLE IF NOT EXISTS promosi (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            barang_id INTEGER,
-            durasi_hari INTEGER,
-            total_bayar INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (barang_id) REFERENCES barang(id)
         );
         CREATE TABLE IF NOT EXISTS review (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,22 +143,10 @@ def init_db():
             FOREIGN KEY (id_peminjam) REFERENCES users(id)
         );
     ''')
-    # 2. CEK ADMIN (Pindahkan conn.close() ke bawah bagian ini!)
-    admin_email = 'admin@pnjemin.com'
-    existing = c.execute("SELECT id FROM users WHERE email=?", (admin_email,)).fetchone()
-    
-    if not existing:
-        # Buat akun admin default kalau belum ada
-        pw_admin = generate_password_hash('admin123')
-        c.execute("INSERT INTO users (nama, email, password, role) VALUES (?, ?, ?, ?)",
-                  ('Admin P-Njemin', admin_email, pw_admin, 'admin'))
-        print("Akun Admin default berhasil dibuat!")
-
-    # 3. BARU TUTUP KONEKSI DI SINI
-    conn.commit()
-    conn.close()
-    print("Database Berhasil Diinisialisasi!")
     # Migrasi: tambah kolom baru jika belum ada
+    for col, defval in [('nik','TEXT')]:
+        try: c.execute(f"ALTER TABLE users ADD COLUMN {col} {defval}")
+        except: pass
     for col, defval in [('foto_serah','TEXT'), ('foto_terima','TEXT')]:
         try:
             c.execute(f"ALTER TABLE transaksi ADD COLUMN {col} {defval}")
@@ -282,65 +196,33 @@ def home():
         barang = conn.execute("SELECT b.*,u.nama as nama_pemilik FROM barang b JOIN users u ON b.id_pemilik=u.id WHERE b.status='tersedia' ORDER BY b.total_disewa DESC").fetchall()
     return render_template('home.html', barang=barang, search=search, kategori=kategori, notif_count=notif_count())
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
-        nik = request.form.get('nik')
-        nama = request.form.get('nama')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        prov = request.form.get('provinsi')
-        kab = request.form.get('kabupaten')
-        kec = request.form.get('kecamatan')
-        desa = request.form.get('desa')
-        detail = request.form.get('alamat_detail')
-        
+        nama = request.form['nama']
+        email = request.form['email']
+        password = request.form['password']
+        no_hp = request.form['no_hp']
+        alamat = request.form['alamat']
+        tipe_akun = request.form['tipe_akun']
+        nik = request.form.get('nik','').strip()
         conn = get_db()
-        
-<<<<<<< HEAD
-        # Cek apakah Email sudah ada (Satu email untuk semua role)
-        user_lama = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if user_lama:
-            flash("Email sudah terdaftar! Anda bisa langsung login untuk meminjam atau menyewakan.", "error")
+        if conn.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
+            flash('Email sudah terdaftar!','error')
             return redirect(url_for('register'))
-
-        # Cek NIK
-        existing_nik = conn.execute("SELECT id FROM users WHERE nik = ?", (nik,)).fetchone()
-        if existing_nik:
-            flash("Gagal! NIK sudah digunakan untuk akun lain.", "error")
-=======
-        # CEK NIK
-        existing_nik = conn.execute("SELECT id FROM users WHERE nik = ?", (nik,)).fetchone()
-        if existing_nik:
-            flash("Gagal! NIK sudah digunakan untuk akun lain.", "error")
-            return redirect(url_for('register'))
-
-        # CEK EMAIL (Biar user tahu 1 akun bisa buat semua)
-        existing_email = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-        if existing_email:
-            flash("Email sudah terdaftar! 1 Akun P-Njemin bisa dipakai untuk meminjam & menyewakan barang. Silakan langsung Login.", "error")
->>>>>>> c6a36643271a7b473a7e6552a0fff0ad1fbf80e8
-            return redirect(url_for('register'))
-
-        hash_pw = generate_password_hash(password)
-        try:
-<<<<<<< HEAD
-            # Kita set 'peminjam' sebagai role awal, tapi user tetap bisa akses fitur pemilik
-=======
-            # Tipe akun langsung diset 'pemilik' biar navbar "Barang Saya" otomatis muncul, 
-            # tapi dia tetep bisa booking barang orang lain karena fiturnya gak diblok.
->>>>>>> c6a36643271a7b473a7e6552a0fff0ad1fbf80e8
-            conn.execute("""INSERT INTO users 
-                (nik, nama, email, password, role, tipe_akun, provinsi, kabupaten, kecamatan, desa, alamat_detail) 
-                VALUES (?, ?, ?, ?, 'user', 'pemilik', ?, ?, ?, ?, ?)""",
-                (nik, nama, email, hash_pw, prov, kab, kec, desa, detail))
-            conn.commit()
-            flash("Registrasi Berhasil! Silakan Login.", "success")
-            return redirect(url_for('login'))
-        except Exception as e:
-            flash(f"Terjadi kesalahan: {e}", "error")
-            
-    return render_template('register.html')
+        if nik:
+            if len(nik) != 16 or not nik.isdigit():
+                flash('NIK harus 16 digit angka!','error')
+                return redirect(url_for('register'))
+            if conn.execute("SELECT id FROM users WHERE nik=?",(nik,)).fetchone():
+                flash('NIK sudah digunakan oleh akun lain!','error')
+                return redirect(url_for('register'))
+        conn.execute("INSERT INTO users (nama,email,password,no_hp,alamat,tipe_akun,nik) VALUES (?,?,?,?,?,?,?)",
+                     (nama,email,generate_password_hash(password),no_hp,alamat,tipe_akun,nik or None))
+        conn.commit()
+        flash('Registrasi berhasil! Silakan login.','success')
+        return redirect(url_for('login'))
+    return render_template('register.html', notif_count=notif_count())
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -359,9 +241,21 @@ def login():
     return render_template('login.html', notif_count=notif_count())
 
 @app.route('/logout')
-def logout():   
+def logout():
     session.clear()
     return redirect(url_for('home'))
+
+@app.route('/switch_role')
+def switch_role():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    if session.get('role') == 'admin': return redirect(url_for('admin_dashboard'))
+    conn = get_db()
+    new_role = 'pemilik' if session.get('tipe_akun') == 'peminjam' else 'peminjam'
+    conn.execute("UPDATE users SET tipe_akun=? WHERE id=?",(new_role, session['user_id']))
+    conn.commit()
+    session['tipe_akun'] = new_role
+    flash(f"Berhasil beralih ke mode {'Pemilik Barang 🏪' if new_role == 'pemilik' else 'Peminjam 🛍️'}!", 'success')
+    return redirect(request.args.get('next') or url_for('home'))
 
 @app.route('/akun_diblokir')
 def akun_diblokir():
@@ -395,61 +289,30 @@ def detail_barang(id):
         is_pemilik_sendiri = (barang['id_pemilik'] == session['user_id']) or (session.get('role') == 'admin') or (session.get('tipe_akun') == 'pemilik')
     return render_template('detail_barang.html', barang=barang, reviews=reviews, total_disewa=total_disewa, notif_count=notif_count(), is_pemilik_sendiri=is_pemilik_sendiri)
 
-<<<<<<< HEAD
-@app.route('/booking/<int:id>', methods=['GET', 'POST'])
-def booking(id):
-    if 'user_id' not in session: return redirect(url_for('login'))
-    
-    conn = get_db()
-    barang = conn.execute("SELECT * FROM barang WHERE id=?", (id,)).fetchone()
-
-    if request.method == 'POST':
-        durasi = int(request.form.get('durasi'))
-        metode_pengambilan = request.form.get('metode_pengambilan')
-        metode_pembayaran = request.form.get('metode_pembayaran')
-        tanggal_pinjam = request.form.get('tanggal_pinjam')
-
-        # --- LOGIKA BARU: HITUNG ADMIN FEE ---
-        biaya_sewa = barang['harga_sewa'] * durasi
-        admin_fee = round(biaya_sewa * 0.05) # Hitung 5%
-        total_biaya = biaya_sewa + admin_fee # Total yang disimpan ke DB
-        # -------------------------------------
-
-        conn.execute('''
-            INSERT INTO transaksi (id_user, id_barang, tanggal_pinjam, durasi, 
-                                 metode_pengambilan, metode_pembayaran, biaya_sewa, total_biaya)
-            VALUES (?,?,?,?,?,?,?,?)
-        ''', (session['user_id'], id, tanggal_pinjam, durasi, 
-              metode_pengambilan, metode_pembayaran, biaya_sewa, total_biaya))
-        
-=======
 @app.route('/booking/<int:id_barang>', methods=['GET','POST'])
 def booking(id_barang):
-    # ... (Validasi session dan kepemilikan biarkan sama seperti kodemu) ...
+    if 'user_id' not in session:
+        return redirect(url_for('login', next=url_for('booking', id_barang=id_barang)))
+    if cek_blokir(): return redirect(url_for('akun_diblokir'))
+    if session.get('tipe_akun') in ['pemilik','admin'] or session.get('role') == 'admin':
+        flash('Akun pemilik dan admin tidak dapat meminjam barang. Gunakan akun peminjam.','error')
+        return redirect(url_for('detail_barang', id=id_barang))
     conn = get_db()
     barang = conn.execute("SELECT * FROM barang WHERE id=?",(id_barang,)).fetchone()
-    
+    if not barang: return redirect(url_for('home'))
+    if barang['id_pemilik'] == session['user_id']:
+        flash('Kamu tidak bisa meminjam barang milikmu sendiri!','error')
+        return redirect(url_for('detail_barang', id=id_barang))
     if request.method == 'POST':
         durasi = int(request.form['durasi'])
         metode_bayar = request.form['metode_pembayaran']
-        
-        # LOGIKA ADMIN FEE
-        total_harga = barang['harga_sewa'] * durasi # Biaya sewa murni
-        admin_fee = int(total_harga * 0.05)         # 5% Fee
-        total_bayar = total_harga + admin_fee       # Total yang dibayar peminjam
-        
-        conn.execute("""INSERT INTO transaksi 
-            (id_user, id_barang, tanggal_pinjam, durasi, metode_pengambilan, metode_pembayaran, biaya_sewa, admin_fee, total_biaya) 
-            VALUES (?,?,?,?,?,?,?,?,?)""",
-            (session['user_id'], id_barang, request.form['tanggal_pinjam'], durasi, request.form['metode_pengambilan'], metode_bayar, total_harga, admin_fee, total_bayar))
-        
+        conn.execute("INSERT INTO transaksi (id_user,id_barang,tanggal_pinjam,durasi,metode_pengambilan,metode_pembayaran,biaya_sewa,total_biaya) VALUES (?,?,?,?,?,?,?,?)",
+                     (session['user_id'],id_barang,request.form['tanggal_pinjam'],durasi,request.form['metode_pengambilan'],metode_bayar,barang['harga_sewa'],barang['harga_sewa']*durasi))
         add_notif(barang['id_pemilik'],f"Ada permintaan booking untuk '{barang['nama_barang']}'!")
->>>>>>> c6a36643271a7b473a7e6552a0fff0ad1fbf80e8
         conn.commit()
-        flash("Peminjaman berhasil diajukan!")
+        flash('Permintaan peminjaman dikirim! Menunggu persetujuan pemilik.','success')
         return redirect(url_for('riwayat'))
-
-    return render_template('booking.html', barang=barang)
+    return render_template('booking.html', barang=barang, notif_count=notif_count())
 
 # ── RIWAYAT (peminjam saja) ──
 @app.route('/riwayat')
@@ -675,21 +538,11 @@ def upload_barang():
     if cek_blokir(): return redirect(url_for('akun_diblokir'))
     if request.method == 'POST':
         foto = save_foto(request.files.get('foto'), f'barang_{session["user_id"]}')
-        
-        harga_sewa = float(request.form['harga_sewa']) # harga_per_hari
-        harga_barang = float(request.form['harga_barang']) # nilai asli barang
-        fee_upload = hitung_fee_upload(harga_barang)
-        
         conn = get_db()
-        conn.execute("""INSERT INTO barang 
-            (nama_barang, kategori, harga_sewa, harga_barang, fee_upload, deskripsi, lokasi, stok, foto, id_pemilik) 
-            VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (request.form['nama_barang'], request.form['kategori'], harga_sewa, harga_barang, fee_upload, 
-             request.form['deskripsi'], request.form['lokasi'], int(request.form['stok']), foto, session['user_id']))
+        conn.execute("INSERT INTO barang (nama_barang,kategori,harga_sewa,deskripsi,lokasi,stok,foto,id_pemilik) VALUES (?,?,?,?,?,?,?,?)",
+                     (request.form['nama_barang'],request.form['kategori'],float(request.form['harga_sewa']),request.form['deskripsi'],request.form['lokasi'],int(request.form['stok']),foto,session['user_id']))
         conn.commit()
-        
-        # Opsi: Kasih notif ke pemilik kalau dia kena fee upload (bisa diarahkan ke halaman bayar fee nanti)
-        flash(f'Barang diupload! Biaya upload sistem: Rp {fee_upload:,.0f}', 'success')
+        flash('Barang berhasil diupload!','success')
         return redirect(url_for('barang_saya'))
     return render_template('upload_barang.html', notif_count=notif_count())
 
@@ -774,30 +627,16 @@ def denda(id_transaksi):
     conn = get_db()
     transaksi = conn.execute("SELECT t.*,b.nama_barang,b.id_pemilik FROM transaksi t JOIN barang b ON t.id_barang=b.id WHERE t.id=?",(id_transaksi,)).fetchone()
     if not transaksi or transaksi['id_pemilik'] != session['user_id']: return redirect(url_for('barang_saya'))
-    
+    if transaksi['status'] != 'selesai':
+        flash('Laporan denda hanya bisa diajukan setelah transaksi selesai.','error')
+        return redirect(url_for('barang_saya'))
     if request.method == 'POST':
-        jenis_denda = request.form['jenis_denda'] # 'terlambat' atau 'kerusakan'
-        
-        if jenis_denda == 'terlambat':
-            hari = int(request.form['hari_terlambat'])
-            total, platform, pemilik = hitung_denda_terlambat(hari)
-            deskripsi = f"Terlambat {hari} hari."
-        else:
-            nominal = int(request.form['nominal_kerusakan'])
-            total, platform, pemilik = hitung_denda_kerusakan(nominal)
-            deskripsi = request.form['deskripsi_kerusakan']
-
-        # Masukkan ke tabel Denda baru
-        conn.execute("""INSERT INTO denda (transaksi_id, jenis, total_denda, bagian_platform, bagian_pemilik) 
-                        VALUES (?,?,?,?,?)""", (id_transaksi, jenis_denda, total, platform, pemilik))
-        
-        # Tetap masuk laporan agar admin bisa review
+        jenis,deskripsi = request.form['jenis_masalah'],request.form['deskripsi']
         foto = save_foto(request.files.get('foto_bukti'), f'denda_{id_transaksi}')
-        conn.execute("INSERT INTO laporan (id_pelapor,id_transaksi,jenis_masalah,deskripsi,foto_bukti,tipe_pelapor) VALUES (?,?,?,?,?,'pemilik')",(session['user_id'],id_transaksi,jenis_denda,deskripsi,foto))
-        
-        add_notif(transaksi['id_user'],f"Pemilik mengenakan denda {jenis_denda} sebesar Rp {total:,.0f} pada '{transaksi['nama_barang']}'.")
+        conn.execute("INSERT INTO laporan (id_pelapor,id_transaksi,jenis_masalah,deskripsi,foto_bukti,tipe_pelapor) VALUES (?,?,?,?,?,'pemilik')",(session['user_id'],id_transaksi,jenis,deskripsi,foto))
+        add_notif(transaksi['id_user'],f"Pemilik melaporkan kerusakan pada '{transaksi['nama_barang']}'. Cek riwayat kamu.")
         conn.commit()
-        flash('Laporan denda dikirim ke sistem!','success')
+        flash('Laporan denda dikirim!','success')
         return redirect(url_for('barang_saya'))
     return render_template('denda.html', transaksi=transaksi, notif_count=notif_count())
 
@@ -1064,9 +903,8 @@ def tentang():
 def bantuan():
     return render_template('bantuan.html', notif_count=notif_count())
 
-# Panggil di sini agar selalu dicek saat app jalan
-with app.app_context():
-    init_db()
 
 if __name__ == '__main__':
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    init_db()
     app.run(debug=True)

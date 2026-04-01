@@ -28,14 +28,9 @@
                     <input type="email" name="email" class="form-control" placeholder="email@kamu.com" required>
                 </div>
                 <div class="form-group">
-    <label><i class="fas fa-lock"></i> Password</label>
-    <div style="position: relative;">
-        <input type="password" name="password" id="password" class="form-control" placeholder="Masukkan password" required>
-        <span id="togglePassword" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted); z-index: 10;">
-            <i class="fas fa-eye" id="eyeIcon"></i>
-        </span>
-    </div>
-</div>
+                    <label><i class="fas fa-lock"></i> Password</label>
+                    <div style="position:relative"><input type="password" name="password" id="pw_login" class="form-control" placeholder="Password kamu" style="padding-right:2.5rem" required><button type="button" onclick="togglePw('pw_login',this)" style="position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:0.9rem"><i class="fas fa-eye"></i></button></div>
+                </div>
                 <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem">
                     <i class="fas fa-sign-in-alt"></i> Masuk
                 </button>
@@ -52,19 +47,4 @@
         </div>
     </div>
 </div>
-<script>
-    const togglePassword = document.querySelector('#togglePassword');
-    const password = document.querySelector('#password');
-    const eyeIcon = document.querySelector('#eyeIcon');
-
-    togglePassword.addEventListener('click', function () {
-        // Tukar tipe input antara password dan text
-        const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-        password.setAttribute('type', type);
-        
-        // Tukar ikon mata
-        eyeIcon.classList.toggle('fa-eye');
-        eyeIcon.classList.toggle('fa-eye-slash');
-    });
-</script>
 {% endblock %}
