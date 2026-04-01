@@ -87,9 +87,14 @@
                 </div>
 
                 <div class="form-group">
-                    <label><i class="fas fa-lock"></i> Password</label>
-                    <input type="password" name="password" class="form-control" placeholder="Min. 6 karakter" required>
-                </div>
+    <label><i class="fas fa-lock"></i> Password</label>
+    <div style="position: relative;">
+        <input type="password" name="password" id="password" class="form-control" placeholder="Min. 6 karakter" required>
+        <span id="togglePassword" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted);">
+            <i class="fas fa-eye"></i>
+        </span>
+    </div>
+</div>
 
                 <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem;margin-top:1rem">
                     <i class="fas fa-user-plus"></i> Daftar Sekarang
@@ -110,7 +115,22 @@ const provSelect = document.getElementById('provinsi');
 const kabSelect = document.getElementById('kabupaten');
 const kecSelect = document.getElementById('kecamatan');
 const desaSelect = document.getElementById('desa');
+// FITUR SHOW/HIDE PASSWORD
+const togglePassword = document.getElementById('togglePassword');
+const password = document.getElementById('password');
 
+togglePassword.addEventListener('click', function () {
+    // Cek tipenya sekarang apa, lalu ubah
+    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    password.setAttribute('type', type);
+    
+    // Ganti ikon mata
+    if (type === 'password') {
+        this.innerHTML = '<i class="fas fa-eye"></i>';
+    } else {
+        this.innerHTML = '<i class="fas fa-eye-slash"></i>';
+    }
+});
 // Load Provinsi
 fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json`)
     .then(response => response.json())

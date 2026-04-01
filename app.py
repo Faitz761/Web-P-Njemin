@@ -52,6 +52,10 @@ def cek_blokir():
 
 def save_foto(f, prefix):
     if f and f.filename and allowed_file(f.filename):
+        # Pastikan folder ada sebelum menyimpan
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
         filename = secure_filename(f'{prefix}_{f.filename}')
         f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         return filename
@@ -70,7 +74,7 @@ def update_db():
         conn.commit()
     except:
         pass # Jika kolom sudah ada, abaikan
-    
+
 def init_db():
     conn = sqlite3.connect('database.db')
     conn.row_factory = sqlite3.Row
@@ -209,7 +213,6 @@ def register():
         nama = request.form.get('nama')
         email = request.form.get('email')
         password = request.form.get('password')
-        # Field Alamat baru
         prov = request.form.get('provinsi')
         kab = request.form.get('kabupaten')
         kec = request.form.get('kecamatan')
@@ -217,17 +220,26 @@ def register():
         detail = request.form.get('alamat_detail')
         
         conn = get_db()
-        # CEK NIK (Sesuai Rule: NIK Sekali Pakai)
+        
+        # CEK NIK
         existing_nik = conn.execute("SELECT id FROM users WHERE nik = ?", (nik,)).fetchone()
         if existing_nik:
             flash("Gagal! NIK sudah digunakan untuk akun lain.", "error")
             return redirect(url_for('register'))
 
+        # CEK EMAIL (Biar user tahu 1 akun bisa buat semua)
+        existing_email = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if existing_email:
+            flash("Email sudah terdaftar! 1 Akun P-Njemin bisa dipakai untuk meminjam & menyewakan barang. Silakan langsung Login.", "error")
+            return redirect(url_for('register'))
+
         hash_pw = generate_password_hash(password)
         try:
+            # Tipe akun langsung diset 'pemilik' biar navbar "Barang Saya" otomatis muncul, 
+            # tapi dia tetep bisa booking barang orang lain karena fiturnya gak diblok.
             conn.execute("""INSERT INTO users 
-                (nik, nama, email, password, role, provinsi, kabupaten, kecamatan, desa, alamat_detail) 
-                VALUES (?, ?, ?, ?, 'peminjam', ?, ?, ?, ?, ?)""",
+                (nik, nama, email, password, role, tipe_akun, provinsi, kabupaten, kecamatan, desa, alamat_detail) 
+                VALUES (?, ?, ?, ?, 'user', 'pemilik', ?, ?, ?, ?, ?)""",
                 (nik, nama, email, hash_pw, prov, kab, kec, desa, detail))
             conn.commit()
             flash("Registrasi Berhasil! Silakan Login.", "success")
