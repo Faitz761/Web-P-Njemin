@@ -989,7 +989,9 @@ def tentang():
 def bantuan():
     return render_template('bantuan.html', notif_count=notif_count())
 
-if __name__ == '__main__':
-    os.makedirs('static/images/uploads', exist_ok=True)
+# Panggil di sini agar selalu dicek saat app jalan
+with app.app_context():
     init_db()
+
+if __name__ == '__main__':
     app.run(debug=True)
